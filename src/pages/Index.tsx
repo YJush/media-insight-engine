@@ -72,15 +72,15 @@ const Index = () => {
         <div className="text-center mb-12 space-y-4">
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 rounded-full mb-4">
             <Shield className="w-4 h-4 text-primary" />
-            <span className="text-sm font-medium text-primary">AI-Powered Media Intelligence</span>
+            <span className="text-sm font-medium text-primary">AI-Powered Decision Intelligence</span>
           </div>
           
           <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent leading-tight">
-            Decode Media Bias
+            Media Integrity & Impact
           </h1>
           
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Analyze news articles for bias, tone, and business impact. Make informed decisions with AI-powered insights.
+            Don't just read the news. Predict the business impact, detect hidden motives, and verify claims with AI.
           </p>
         </div>
 
@@ -90,9 +90,9 @@ const Index = () => {
             <div className="p-3 bg-primary/10 rounded-lg w-fit mb-4">
               <Search className="w-6 h-6 text-primary" />
             </div>
-            <h3 className="font-semibold mb-2">Claim Extraction</h3>
+            <h3 className="font-semibold mb-2">Impact Analysis</h3>
             <p className="text-sm text-muted-foreground">
-              Automatically identify key claims and statements from articles
+              Predict consequences: "If I believe this, what business mistake might I make?"
             </p>
           </Card>
 
@@ -100,9 +100,9 @@ const Index = () => {
             <div className="p-3 bg-secondary/10 rounded-lg w-fit mb-4">
               <TrendingUp className="w-6 h-6 text-secondary" />
             </div>
-            <h3 className="font-semibold mb-2">Bias Detection</h3>
+            <h3 className="font-semibold mb-2">Motive Detection</h3>
             <p className="text-sm text-muted-foreground">
-              Detect tone, framing, and ideological bias in media content
+              Detect "native advertising" and check if the publisher has financial ties to the subject.
             </p>
           </Card>
 
@@ -110,9 +110,9 @@ const Index = () => {
             <div className="p-3 bg-accent/10 rounded-lg w-fit mb-4">
               <Target className="w-6 h-6 text-accent" />
             </div>
-            <h3 className="font-semibold mb-2">Impact Analysis</h3>
+            <h3 className="font-semibold mb-2">Live Verification</h3>
             <p className="text-sm text-muted-foreground">
-              Predict business risks and get actionable recommendations
+              AI cross-checks claims against independent sources in real-time.
             </p>
           </Card>
         </div>
@@ -150,7 +150,7 @@ const Index = () => {
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Enter any news article URL to analyze its claims, bias, and potential business impact
+              Enter any news article URL to analyze its strategic impact and integrity.
             </p>
           </div>
         </Card>
