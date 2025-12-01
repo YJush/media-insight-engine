@@ -1,209 +1,253 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { AlertCircle, TrendingUp, CheckCircle, Info, ShieldAlert, BrainCircuit } from "lucide-react";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+// --- Interfaces ---
+interface ImpactItem {
+  claim: string;
+  domain: string;
+  implied_action: string;
+  predicted_consequence: string;
+  recommendation: string;
+}
+
+interface AnalysisResult {
+  article_summary: string;
+  risk_level: "low" | "medium" | "high";
+  decision_impact_analysis?: ImpactItem[];
+  missing_perspectives?: string[];
+  credibility_check?: string;
+  // Legacy fields
+  article_type?: string;
+  political_bias_score?: number;
+  writing_style_score?: number;
+  claims?: string[];
+  tone?: string;
+  bias?: string;
+  political_slant?: string;
+  source_influence?: string;
+  possible_negative_consequences?: string[];
+  suggested_actions?: string[];
+}
+
+interface ArticleAnalysisProps {
+  result: AnalysisResult;
+}
+
+// --- Helper Functions ---
+const getRiskBadgeVariant = (level: string): "success" | "warning" | "destructive" | "default" => {
+  switch (level?.toLowerCase()) {
+    case "low":
+      return "success";
+    case "medium":
+      return "warning";
+    case "high":
+      return "destructive";
+    default:
+      return "default";
+  }
 };
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+const getRiskTextColor = (level: string) => {
+  switch (level?.toLowerCase()) {
+    case "low":
+      return "text-success";
+    case "medium":
+      return "text-warning";
+    case "high":
+      return "text-destructive";
+    default:
+      return "text-muted-foreground";
   }
+};
 
-  try {
-    const { url } = await req.json();
+const getRiskBgColor = (level: string) => {
+  switch (level?.toLowerCase()) {
+    case "low":
+      return "bg-success/10";
+    case "medium":
+      return "bg-warning/10";
+    case "high":
+      return "bg-destructive/10";
+    default:
+      return "bg-muted/10";
+  }
+};
 
-    if (!url) {
-      return new Response(
-        JSON.stringify({ error: "URL is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+const getRiskIcon = (level: string) => {
+  switch (level?.toLowerCase()) {
+    case "low":
+      return <CheckCircle className="w-5 h-5" />;
+    case "medium":
+      return <AlertCircle className="w-5 h-5" />;
+    case "high":
+      return <AlertCircle className="w-5 h-5" />;
+    default:
+      return <Info className="w-5 h-5" />;
+  }
+};
 
-    console.log("Analyzing article:", url);
+export const ArticleAnalysis = ({ result }: ArticleAnalysisProps) => {
+  const isPolitical = result.article_type === "political";
 
-    // Step 1: Fetch article content (simplified - using a basic fetch)
-    let articleText = "";
-    try {
-      const articleResponse = await fetch(url);
-      const html = await articleResponse.text();
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
       
-      // Basic extraction - in production, use a proper scraper
-      // Remove HTML tags and get text content
-      articleText = html
-        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
-        .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
-        .replace(/<[^>]+>/g, " ")
-        .replace(/\s+/g, " ")
-        .trim()
-        .substring(0, 15000); // Limit to first 15k chars
-
-      console.log("Article text length:", articleText.length);
-    } catch (error) {
-      console.error("Error fetching article:", error);
-      return new Response(
-        JSON.stringify({ error: "Failed to fetch article content" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Step 2: Classify article type
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
-
-    const classifyPrompt = `Classify the following article as "political", "business", "general", or "other". Return a single word only.
-
-Article text:
-${articleText.substring(0, 5000)}`;
-
-    console.log("Classifying article type...");
-    const classifyResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [{ role: "user", content: classifyPrompt }],
-        temperature: 0.2,
-      }),
-    });
-
-    if (!classifyResponse.ok) {
-      const errorText = await classifyResponse.text();
-      console.error("Classification error:", classifyResponse.status, errorText);
-      throw new Error("Failed to classify article");
-    }
-
-    const classifyData = await classifyResponse.json();
-    const articleType = classifyData.choices[0].message.content.trim().toLowerCase();
-    console.log("Article type:", articleType);
-
-    // Step 3: Comprehensive analysis based on article type
-    const isPolitical = articleType === "political";
-    
-    const analysisPrompt = isPolitical 
-      ? `You are an expert AI analyst. Analyze the article and return structured JSON with:
-         1. "political_bias_score": numeric 0-100
-         2. "writing_style_score": numeric 0-100
-         3. "article_summary": short summary
-         4. "claims": list of key claims
-         5. "tone": overall tone
-         6. "bias": framing bias
-         7. "political_slant": slant description
-         8. "source_influence": source credibility
-         9. "risk_level": low/medium/high
-         10. "possible_negative_consequences": risks
-         11. "suggested_actions": recommendations
-         
-         Article text:
-         ${articleText}
-         
-         Return ONLY valid JSON.`
-      : `You are a Decision Intelligence AI for Small and Medium Enterprises (SMEs). 
-         Do not just summarize. Analyze the STRATEGIC IMPACT of this content.
-
-         Analyze the article and return structured JSON with:
-
-        1. "article_summary": "Executive summary (2 sentences)",
-        2. "risk_level": "low" | "medium" | "high",
-        3. "decision_impact_analysis": A list of 3 items. For each major claim in the text, identify:
-           - "claim": The specific assertion made.
-           - "domain": "Marketing", "Finance", "HR", "Tech", or "Strategy".
-           - "implied_action": What might a business owner do if they blindly believe this? (e.g., "Shift budget to TikTok ads", "Fire remote staff").
-           - "predicted_consequence": The negative outcome if the article is biased/wrong (e.g., "Wasted ad spend due to unverified demographics").
-           - "recommendation": A specific counter-measure or verification step (e.g., "Run a $500 pilot test before shifting full budget").
-        4. "missing_perspectives": List of strings. What data or viewpoints did the author intentionally leave out?
-        5. "credibility_check": A 1-sentence assessment of the source's historical reliability on this specific topic.
+      {/* 1. Executive Decision Summary */}
+      <Card className="p-6 shadow-md border-l-4 border-l-primary">
+        <div className="flex justify-between items-start mb-4">
+          <h3 className="text-xl font-bold flex items-center gap-2">
+            <BrainCircuit className="w-6 h-6 text-primary" />
+            Decision Intelligence
+          </h3>
+          <Badge variant={getRiskBadgeVariant(result.risk_level)} className="text-sm px-3 py-1">
+            {(result.risk_level || "UNKNOWN").toUpperCase()} STRATEGIC RISK
+          </Badge>
+        </div>
+        <p className="text-muted-foreground mb-4">{result.article_summary}</p>
         
-        // Keep these legacy fields for backward compatibility if needed, or remove if you fully update the UI:
-        6. "political_bias_score": set to 50
-        7. "writing_style_score": numeric 0-100 based on objectivity
+        {result.credibility_check && (
+          <div className="bg-muted/30 p-3 rounded-md text-sm border border-border">
+            <span className="font-semibold text-foreground">Source Credibility: </span>
+            {result.credibility_check}
+          </div>
+        )}
+      </Card>
 
-        Article text:
-        ${articleText}
+      {/* 2. The Core Feature: Impact Mapping */}
+      {result.decision_impact_analysis && result.decision_impact_analysis.length > 0 ? (
+        <div className="grid gap-4">
+          <h4 className="text-lg font-semibold flex items-center gap-2 mt-2">
+            <ShieldAlert className="w-5 h-5 text-orange-500" />
+            Projected Consequences & Countermeasures
+          </h4>
+          
+          <Accordion type="single" collapsible className="w-full">
+            {result.decision_impact_analysis.map((item, idx) => (
+              <AccordionItem key={idx} value={`item-${idx}`} className="border rounded-lg mb-4 px-4 bg-card shadow-sm">
+                <AccordionTrigger className="hover:no-underline py-4">
+                  <div className="flex flex-col items-start text-left gap-1">
+                    <div className="flex gap-2 items-center">
+                      <Badge variant="outline" className="uppercase text-[10px] tracking-wider">
+                        {item.domain}
+                      </Badge>
+                      <span className="font-medium text-sm text-muted-foreground">
+                        If you act on: "{item.claim.substring(0, 50)}..."
+                      </span>
+                    </div>
+                    <span className="font-semibold text-base mt-1">
+                      Risk: {item.predicted_consequence}
+                    </span>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="pb-4">
+                  <div className="grid md:grid-cols-2 gap-4 mt-2 pt-4 border-t">
+                    <div className="bg-red-50 dark:bg-red-900/10 p-3 rounded-md border border-red-100 dark:border-red-900/20">
+                      <p className="text-xs font-bold text-red-600 dark:text-red-400 uppercase mb-1">
+                        The Trap (Implied Action)
+                      </p>
+                      <p className="text-sm">{item.implied_action}</p>
+                    </div>
+                    <div className="bg-green-50 dark:bg-green-900/10 p-3 rounded-md border border-green-100 dark:border-green-900/20">
+                      <p className="text-xs font-bold text-green-600 dark:text-green-400 uppercase mb-1">
+                        Recommended Countermeasure
+                      </p>
+                      <p className="text-sm">{item.recommendation}</p>
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        </div>
+      ) : (
+        /* Fallback for Political/Legacy format */
+        <>
+          {/* Legacy Claims List */}
+          {result.claims && (
+            <Card className="p-6 shadow-sm">
+              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-primary" />
+                Key Claims
+              </h3>
+              <ul className="space-y-3">
+                {result.claims.map((claim, idx) => (
+                  <li key={idx} className="flex gap-3 text-sm">
+                    <span className="text-primary font-semibold mt-0.5">{idx + 1}.</span>
+                    <span className="flex-1">{claim}</span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+          
+          {/* Legacy Risks */}
+          {result.possible_negative_consequences && (
+             <Card className="p-6 shadow-sm border-warning/30 bg-warning/5">
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-warning" />
+                  Potential Risks
+                </h3>
+                <ul className="space-y-3">
+                  {result.possible_negative_consequences.map((consequence, idx) => (
+                    <li key={idx} className="flex gap-3 text-sm">
+                      <span className="text-warning font-semibold mt-0.5">⚠</span>
+                      <span className="flex-1">{consequence}</span>
+                    </li>
+                  ))}
+                </ul>
+             </Card>
+          )}
+        </>
+      )}
 
-        Return ONLY valid JSON.`;
-
-    const GOOGLE_API_KEY = Deno.env.get("GOOGLE_API_KEY");
-    if (!GOOGLE_API_KEY) {
-      throw new Error("GOOGLE_API_KEY is not configured");
-    }
-
-    console.log("Calling Google Gemini directly for analysis...");
-    
-    const analysisResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GOOGLE_API_KEY}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{ text: analysisPrompt }]
-          }],
-          tools: [{
-            google_search_retrieval: {
-              dynamic_retrieval_config: {
-                mode: "MODE_DYNAMIC",
-                dynamic_threshold: 0.7,
-              }
-            }
-          }],
-          generationConfig: {
-            temperature: 0.3,
-            responseMimeType: "application/json"
-          }
-        }),
-      }
-    );
-
-    if (!analysisResponse.ok) {
-      const errorText = await analysisResponse.text();
-      throw new Error(`Google API Error: ${errorText}`);
-    }
-
-    const analysisData = await analysisResponse.json();
-    console.log("Analysis response:", JSON.stringify(analysisData));
-    
-    let fullAnalysis;
-    try {
-      // Google API returns the text in candidates[0].content.parts[0].text
-      const textContent = analysisData.candidates[0].content.parts[0].text;
-      fullAnalysis = JSON.parse(textContent);
-    } catch (error) {
-      console.error("Failed to parse Google JSON:", error);
-      throw new Error("Failed to parse AI response");
-    }
-    // Add article type to result
-    const finalResult = {
-      article_type: articleType,
-      ...fullAnalysis,
-    };
-
-    console.log("Analysis complete:", JSON.stringify(finalResult));
-
-    return new Response(
-      JSON.stringify(finalResult),
-      { 
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" }
-      }
-    );
-  } catch (error) {
-    console.error("Analysis error:", error);
-    return new Response(
-      JSON.stringify({ 
-        error: error instanceof Error ? error.message : "Unknown error occurred" 
-      }),
-      { 
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" }
-      }
-    );
-  }
-});
+      {/* 3. Blind Spots (What's missing) */}
+      {result.missing_perspectives && result.missing_perspectives.length > 0 && (
+        <Card className="p-6 shadow-sm">
+          <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+            <Info className="w-5 h-5 text-blue-500" />
+            Blind Spots & Missing Context
+          </h3>
+          <ul className="space-y-2">
+            {result.missing_perspectives.map((point, idx) => (
+              <li key={idx} className="flex gap-3 text-sm text-muted-foreground">
+                <span className="text-blue-500">•</span>
+                {point}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+      
+      {/* Political Analysis Card (Only shows if political) */}
+      {isPolitical && (
+        <Card className="p-6 shadow-sm border-primary/20 bg-primary/5">
+          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Info className="w-5 h-5 text-primary" />
+            Political Analysis
+          </h3>
+          <div className="grid md:grid-cols-3 gap-4">
+            <div>
+              <h4 className="text-sm font-medium text-muted-foreground mb-1">Tone</h4>
+              <p className="font-semibold capitalize">{result.tone}</p>
+            </div>
+            <div>
+              <h4 className="text-sm font-medium text-muted-foreground mb-1">Political Slant</h4>
+              <p className="font-semibold capitalize">{result.political_slant}</p>
+            </div>
+            <div>
+              <h4 className="text-sm font-medium text-muted-foreground mb-1">Bias</h4>
+              <p className="font-semibold">{result.bias}</p>
+            </div>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+};
