@@ -128,52 +128,57 @@ ${articleText.substring(0, 5000)}`;
 
         Return ONLY valid JSON.`;
 
-    console.log("Calling Lovable AI for comprehensive analysis...");
-    const analysisResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [{ role: "user", content: analysisPrompt }],
-        temperature: 0.3,
-      }),
-    });
+    const GOOGLE_API_KEY = Deno.env.get("GOOGLE_API_KEY");
+    if (!GOOGLE_API_KEY) {
+      throw new Error("GOOGLE_API_KEY is not configured");
+    }
+
+    console.log("Calling Google Gemini directly for analysis...");
+    
+    const analysisResponse = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GOOGLE_API_KEY}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: analysisPrompt }]
+          }],
+          tools: [{
+            google_search_retrieval: {
+              dynamic_retrieval_config: {
+                mode: "MODE_DYNAMIC",
+                dynamic_threshold: 0.7,
+              }
+            }
+          }],
+          generationConfig: {
+            temperature: 0.3,
+            responseMimeType: "application/json"
+          }
+        }),
+      }
+    );
 
     if (!analysisResponse.ok) {
-      if (analysisResponse.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "AI rate limit exceeded. Please try again later." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      if (analysisResponse.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "AI credits exhausted. Please add credits to continue." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
       const errorText = await analysisResponse.text();
-      console.error("AI gateway error:", analysisResponse.status, errorText);
-      throw new Error("AI gateway error");
+      throw new Error(`Google API Error: ${errorText}`);
     }
 
     const analysisData = await analysisResponse.json();
     console.log("Analysis response:", JSON.stringify(analysisData));
-
+    
     let fullAnalysis;
     try {
-      const content = analysisData.choices[0].message.content;
-      const jsonMatch = content.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/) || content.match(/(\{[\s\S]*\})/);
-      const jsonStr = jsonMatch ? jsonMatch[1] : content;
-      fullAnalysis = JSON.parse(jsonStr);
+      // Google API returns the text in candidates[0].content.parts[0].text
+      const textContent = analysisData.candidates[0].content.parts[0].text;
+      fullAnalysis = JSON.parse(textContent);
     } catch (error) {
-      console.error("Failed to parse analysis JSON:", error);
+      console.error("Failed to parse Google JSON:", error);
       throw new Error("Failed to parse AI response");
     }
-
     // Add article type to result
     const finalResult = {
       article_type: articleType,
