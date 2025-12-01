@@ -1,6 +1,16 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, TrendingUp, CheckCircle, Info, ShieldAlert, BrainCircuit } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { 
+  AlertCircle, 
+  TrendingUp, 
+  CheckCircle, 
+  Info, 
+  ShieldAlert, 
+  BrainCircuit,
+  Megaphone,
+  Scale
+} from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -8,7 +18,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 
-// --- Interfaces ---
+// --- Interfaces for Data Structure ---
 interface ImpactItem {
   claim: string;
   domain: string;
@@ -17,13 +27,29 @@ interface ImpactItem {
   recommendation: string;
 }
 
+interface EntityInfo {
+  name: string;
+  role: string;
+  background_check: string;
+}
+
+interface IntegrityAnalysis {
+  promotional_score: number;
+  intent: string;
+  logical_fallacies: string[];
+  conflict_of_interest_warning: string | null;
+}
+
 interface AnalysisResult {
   article_summary: string;
   risk_level: "low" | "medium" | "high";
   decision_impact_analysis?: ImpactItem[];
+  integrity_analysis?: IntegrityAnalysis;
+  entities_and_funding?: EntityInfo[];
   missing_perspectives?: string[];
   credibility_check?: string;
-  // Legacy fields
+  
+  // Legacy fields for political/older compatibility
   article_type?: string;
   political_bias_score?: number;
   writing_style_score?: number;
@@ -40,7 +66,7 @@ interface ArticleAnalysisProps {
   result: AnalysisResult;
 }
 
-// --- Helper Functions ---
+// --- Helper Functions for Styling ---
 const getRiskBadgeVariant = (level: string): "success" | "warning" | "destructive" | "default" => {
   switch (level?.toLowerCase()) {
     case "low":
@@ -120,8 +146,8 @@ export const ArticleAnalysis = ({ result }: ArticleAnalysisProps) => {
         )}
       </Card>
 
-      {/* 2. The Core Feature: Impact Mapping */}
-      {result.decision_impact_analysis && result.decision_impact_analysis.length > 0 ? (
+      {/* 2. Impact Mapping (Accordion) */}
+      {result.decision_impact_analysis && result.decision_impact_analysis.length > 0 && (
         <div className="grid gap-4">
           <h4 className="text-lg font-semibold flex items-center gap-2 mt-2">
             <ShieldAlert className="w-5 h-5 text-orange-500" />
@@ -166,48 +192,98 @@ export const ArticleAnalysis = ({ result }: ArticleAnalysisProps) => {
             ))}
           </Accordion>
         </div>
-      ) : (
-        /* Fallback for Political/Legacy format */
-        <>
-          {/* Legacy Claims List */}
-          {result.claims && (
-            <Card className="p-6 shadow-sm">
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-primary" />
-                Key Claims
-              </h3>
-              <ul className="space-y-3">
-                {result.claims.map((claim, idx) => (
-                  <li key={idx} className="flex gap-3 text-sm">
-                    <span className="text-primary font-semibold mt-0.5">{idx + 1}.</span>
-                    <span className="flex-1">{claim}</span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
-          
-          {/* Legacy Risks */}
-          {result.possible_negative_consequences && (
-             <Card className="p-6 shadow-sm border-warning/30 bg-warning/5">
-                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5 text-warning" />
-                  Potential Risks
-                </h3>
-                <ul className="space-y-3">
-                  {result.possible_negative_consequences.map((consequence, idx) => (
-                    <li key={idx} className="flex gap-3 text-sm">
-                      <span className="text-warning font-semibold mt-0.5">⚠</span>
-                      <span className="flex-1">{consequence}</span>
-                    </li>
-                  ))}
-                </ul>
-             </Card>
-          )}
-        </>
       )}
 
-      {/* 3. Blind Spots (What's missing) */}
+      {/* 3. NEW: Integrity & Motive Analysis */}
+      {result.integrity_analysis && (
+        <div className="grid md:grid-cols-2 gap-4">
+          
+          {/* Card A: Intent & Promotion */}
+          <Card className="p-6 shadow-sm border-l-4 border-l-blue-500">
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <Megaphone className="w-5 h-5 text-blue-500" />
+              Intent & Promotion
+            </h3>
+            
+            <div className="space-y-4">
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-muted-foreground">Promotional Score</span>
+                  <span className="font-bold">{result.integrity_analysis.promotional_score}/100</span>
+                </div>
+                <Progress value={result.integrity_analysis.promotional_score} className="h-2" />
+                <p className="text-xs text-muted-foreground mt-1">
+                  {result.integrity_analysis.promotional_score > 50 
+                    ? "⚠️ High likelihood of commercial intent" 
+                    : "✓ Appears objective"}
+                </p>
+              </div>
+
+              <div className="bg-muted/30 p-3 rounded-md">
+                <span className="text-xs font-uppercase text-muted-foreground block mb-1">DETECTED INTENT</span>
+                <span className="font-medium text-foreground">{result.integrity_analysis.intent}</span>
+              </div>
+
+              {result.integrity_analysis.logical_fallacies?.length > 0 && (
+                <div>
+                  <span className="text-xs font-uppercase text-muted-foreground block mb-1">LOGICAL FALLACIES</span>
+                  <div className="flex flex-wrap gap-2">
+                    {result.integrity_analysis.logical_fallacies.map((fallacy, i) => (
+                      <Badge key={i} variant="outline" className="text-xs border-orange-200 bg-orange-50 text-orange-700">
+                        {fallacy}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </Card>
+
+          {/* Card B: Conflict Check */}
+          <Card className="p-6 shadow-sm border-l-4 border-l-purple-500">
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <Scale className="w-5 h-5 text-purple-500" />
+              Conflict Check
+            </h3>
+
+            {result.integrity_analysis.conflict_of_interest_warning ? (
+              <div className="bg-red-50 border border-red-100 p-3 rounded-md mb-4">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-600 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-bold text-red-700">Potential Conflict Detected</p>
+                    <p className="text-sm text-red-600 mt-1">
+                      {result.integrity_analysis.conflict_of_interest_warning}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-green-600 mb-4 bg-green-50 p-3 rounded-md border border-green-100">
+                <CheckCircle className="w-4 h-4" />
+                <span className="text-sm font-medium">No obvious conflicts found.</span>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <span className="text-xs font-uppercase text-muted-foreground">KEY ENTITIES BACKGROUND</span>
+              {result.entities_and_funding?.map((entity, i) => (
+                <div key={i} className="text-sm border-b last:border-0 pb-2 last:pb-0">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="font-medium">{entity.name}</span>
+                    <Badge variant="secondary" className="text-[10px] h-5">{entity.role}</Badge>
+                  </div>
+                  <p className="text-muted-foreground text-xs leading-relaxed">
+                    {entity.background_check}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* 4. Blind Spots */}
       {result.missing_perspectives && result.missing_perspectives.length > 0 && (
         <Card className="p-6 shadow-sm">
           <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
@@ -225,7 +301,7 @@ export const ArticleAnalysis = ({ result }: ArticleAnalysisProps) => {
         </Card>
       )}
       
-      {/* Political Analysis Card (Only shows if political) */}
+      {/* 5. Fallback for Political/Legacy format */}
       {isPolitical && (
         <Card className="p-6 shadow-sm border-primary/20 bg-primary/5">
           <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
