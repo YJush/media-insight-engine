@@ -8,7 +8,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 
-// 1. Updated Interfaces to match the new Decision Intelligence JSON
+// --- Interfaces ---
 interface ImpactItem {
   claim: string;
   domain: string;
@@ -20,10 +20,10 @@ interface ImpactItem {
 interface AnalysisResult {
   article_summary: string;
   risk_level: "low" | "medium" | "high";
-  decision_impact_analysis?: ImpactItem[]; // Optional because political articles might not have it yet
+  decision_impact_analysis?: ImpactItem[];
   missing_perspectives?: string[];
   credibility_check?: string;
-  // Legacy fields for backward compatibility/political mode
+  // Legacy fields
   article_type?: string;
   political_bias_score?: number;
   writing_style_score?: number;
@@ -40,9 +40,9 @@ interface ArticleAnalysisProps {
   result: AnalysisResult;
 }
 
-// 2. The Helper Functions (These were missing and caused your error)
+// --- Helper Functions ---
 const getRiskBadgeVariant = (level: string): "success" | "warning" | "destructive" | "default" => {
-  switch (level) {
+  switch (level?.toLowerCase()) {
     case "low":
       return "success";
     case "medium":
@@ -55,7 +55,7 @@ const getRiskBadgeVariant = (level: string): "success" | "warning" | "destructiv
 };
 
 const getRiskTextColor = (level: string) => {
-  switch (level) {
+  switch (level?.toLowerCase()) {
     case "low":
       return "text-success";
     case "medium":
@@ -68,7 +68,7 @@ const getRiskTextColor = (level: string) => {
 };
 
 const getRiskBgColor = (level: string) => {
-  switch (level) {
+  switch (level?.toLowerCase()) {
     case "low":
       return "bg-success/10";
     case "medium":
@@ -81,7 +81,7 @@ const getRiskBgColor = (level: string) => {
 };
 
 const getRiskIcon = (level: string) => {
-  switch (level) {
+  switch (level?.toLowerCase()) {
     case "low":
       return <CheckCircle className="w-5 h-5" />;
     case "medium":
@@ -94,7 +94,8 @@ const getRiskIcon = (level: string) => {
 };
 
 export const ArticleAnalysis = ({ result }: ArticleAnalysisProps) => {
-  
+  const isPolitical = result.article_type === "political";
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       
@@ -106,7 +107,7 @@ export const ArticleAnalysis = ({ result }: ArticleAnalysisProps) => {
             Decision Intelligence
           </h3>
           <Badge variant={getRiskBadgeVariant(result.risk_level)} className="text-sm px-3 py-1">
-            {result.risk_level.toUpperCase()} STRATEGIC RISK
+            {(result.risk_level || "UNKNOWN").toUpperCase()} STRATEGIC RISK
           </Badge>
         </div>
         <p className="text-muted-foreground mb-4">{result.article_summary}</p>
@@ -120,7 +121,7 @@ export const ArticleAnalysis = ({ result }: ArticleAnalysisProps) => {
       </Card>
 
       {/* 2. The Core Feature: Impact Mapping */}
-      {result.decision_impact_analysis && result.decision_impact_analysis.length > 0 && (
+      {result.decision_impact_analysis && result.decision_impact_analysis.length > 0 ? (
         <div className="grid gap-4">
           <h4 className="text-lg font-semibold flex items-center gap-2 mt-2">
             <ShieldAlert className="w-5 h-5 text-orange-500" />
@@ -137,7 +138,7 @@ export const ArticleAnalysis = ({ result }: ArticleAnalysisProps) => {
                         {item.domain}
                       </Badge>
                       <span className="font-medium text-sm text-muted-foreground">
-                        If you act on: "{item.claim.substring(0, 40)}..."
+                        If you act on: "{item.claim.substring(0, 50)}..."
                       </span>
                     </div>
                     <span className="font-semibold text-base mt-1">
@@ -165,6 +166,45 @@ export const ArticleAnalysis = ({ result }: ArticleAnalysisProps) => {
             ))}
           </Accordion>
         </div>
+      ) : (
+        /* Fallback for Political/Legacy format */
+        <>
+          {/* Legacy Claims List */}
+          {result.claims && (
+            <Card className="p-6 shadow-sm">
+              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-primary" />
+                Key Claims
+              </h3>
+              <ul className="space-y-3">
+                {result.claims.map((claim, idx) => (
+                  <li key={idx} className="flex gap-3 text-sm">
+                    <span className="text-primary font-semibold mt-0.5">{idx + 1}.</span>
+                    <span className="flex-1">{claim}</span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+          
+          {/* Legacy Risks */}
+          {result.possible_negative_consequences && (
+             <Card className="p-6 shadow-sm border-warning/30 bg-warning/5">
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-warning" />
+                  Potential Risks
+                </h3>
+                <ul className="space-y-3">
+                  {result.possible_negative_consequences.map((consequence, idx) => (
+                    <li key={idx} className="flex gap-3 text-sm">
+                      <span className="text-warning font-semibold mt-0.5">⚠</span>
+                      <span className="flex-1">{consequence}</span>
+                    </li>
+                  ))}
+                </ul>
+             </Card>
+          )}
+        </>
       )}
 
       {/* 3. Blind Spots (What's missing) */}
@@ -185,12 +225,28 @@ export const ArticleAnalysis = ({ result }: ArticleAnalysisProps) => {
         </Card>
       )}
       
-      {/* 4. Fallback for older/political analysis if decision_impact_analysis is missing */}
-      {!result.decision_impact_analysis && (
-        <div className="text-sm text-muted-foreground">
-           {/* You can add back the legacy Bias/Style meters here if you want to support both modes */}
-           <p>Standard analysis mode active.</p>
-        </div>
+      {/* Political Analysis Card (Only shows if political) */}
+      {isPolitical && (
+        <Card className="p-6 shadow-sm border-primary/20 bg-primary/5">
+          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Info className="w-5 h-5 text-primary" />
+            Political Analysis
+          </h3>
+          <div className="grid md:grid-cols-3 gap-4">
+            <div>
+              <h4 className="text-sm font-medium text-muted-foreground mb-1">Tone</h4>
+              <p className="font-semibold capitalize">{result.tone}</p>
+            </div>
+            <div>
+              <h4 className="text-sm font-medium text-muted-foreground mb-1">Political Slant</h4>
+              <p className="font-semibold capitalize">{result.political_slant}</p>
+            </div>
+            <div>
+              <h4 className="text-sm font-medium text-muted-foreground mb-1">Bias</h4>
+              <p className="font-semibold">{result.bias}</p>
+            </div>
+          </div>
+        </Card>
       )}
     </div>
   );
