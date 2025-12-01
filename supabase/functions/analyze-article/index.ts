@@ -87,41 +87,46 @@ ${articleText.substring(0, 5000)}`;
     
     const analysisPrompt = isPolitical 
       ? `You are an expert AI analyst. Analyze the article and return structured JSON with:
+         1. "political_bias_score": numeric 0-100
+         2. "writing_style_score": numeric 0-100
+         3. "article_summary": short summary
+         4. "claims": list of key claims
+         5. "tone": overall tone
+         6. "bias": framing bias
+         7. "political_slant": slant description
+         8. "source_influence": source credibility
+         9. "risk_level": low/medium/high
+         10. "possible_negative_consequences": risks
+         11. "suggested_actions": recommendations
+         
+         Article text:
+         ${articleText}
+         
+         Return ONLY valid JSON.`
+      : `You are a Decision Intelligence AI for Small and Medium Enterprises (SMEs). 
+         Do not just summarize. Analyze the STRATEGIC IMPACT of this content.
 
-1. "political_bias_score": numeric 0–100 (0 = far-left, 50 = center, 100 = far-right)
-2. "writing_style_score": numeric 0–100 (0 = fully opinion, 100 = fully factual)
-3. "article_summary": short summary (2–3 sentences)
-4. "claims": list of 3–5 key claims from the article
-5. "tone": overall tone (neutral, optimistic, alarmist, negative)
-6. "bias": ideological or framing bias description
-7. "political_slant": conservative, liberal, centrist, or other
-8. "source_influence": description of source credibility and potential influence
-9. "risk_level": low / medium / high
-10. "possible_negative_consequences": up to 3 potential risks for SMEs
-11. "suggested_actions": up to 3 actionable recommendations
+         Analyze the article and return structured JSON with:
 
-Article text:
-${articleText}
+        1. "article_summary": "Executive summary (2 sentences)",
+        2. "risk_level": "low" | "medium" | "high",
+        3. "decision_impact_analysis": A list of 3 items. For each major claim in the text, identify:
+           - "claim": The specific assertion made.
+           - "domain": "Marketing", "Finance", "HR", "Tech", or "Strategy".
+           - "implied_action": What might a business owner do if they blindly believe this? (e.g., "Shift budget to TikTok ads", "Fire remote staff").
+           - "predicted_consequence": The negative outcome if the article is biased/wrong (e.g., "Wasted ad spend due to unverified demographics").
+           - "recommendation": A specific counter-measure or verification step (e.g., "Run a $500 pilot test before shifting full budget").
+        4. "missing_perspectives": List of strings. What data or viewpoints did the author intentionally leave out?
+        5. "credibility_check": A 1-sentence assessment of the source's historical reliability on this specific topic.
+        
+        // Keep these legacy fields for backward compatibility if needed, or remove if you fully update the UI:
+        6. "political_bias_score": set to 50
+        7. "writing_style_score": numeric 0-100 based on objectivity
 
-Return ONLY valid JSON.`
-      : `You are an AI business intelligence assistant for SMEs. Analyze the article and return structured JSON with:
+        Article text:
+        ${articleText}
 
-1. "political_bias_score": set to 50 (neutral)
-2. "writing_style_score": numeric 0–100 (0 = fully opinion, 100 = fully factual)
-3. "article_summary": short summary (2–3 sentences)
-4. "claims": list of 3–5 key claims from the article
-5. "tone": overall tone description
-6. "bias": any framing bias or "none"
-7. "political_slant": "N/A"
-8. "source_influence": "N/A"
-9. "risk_level": low / medium / high
-10. "possible_negative_consequences": up to 3 potential risks for SMEs
-11. "suggested_actions": up to 3 actionable recommendations
-
-Article text:
-${articleText}
-
-Return ONLY valid JSON.`;
+        Return ONLY valid JSON.`;
 
     console.log("Calling Lovable AI for comprehensive analysis...");
     const analysisResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
