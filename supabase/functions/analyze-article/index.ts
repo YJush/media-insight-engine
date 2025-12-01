@@ -47,30 +47,19 @@ serve(async (req) => {
       );
     }
 
-    // Step 2: Extract claims, tone, and bias using Lovable AI
+    // Step 2: Classify article type
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    const step1Prompt = `You are an expert media analyst. Analyze the following article and return structured JSON:
-
-1. "claims": a list of the main factual or forward-looking claims in the article (array of strings).
-2. "tone": overall tone (neutral, optimistic, alarmist, negative, or similar).
-3. "bias": any ideological, framing, or source bias (brief label or "none").
+    const classifyPrompt = `Classify the following article as "political", "business", "general", or "other". Return a single word only.
 
 Article text:
-${articleText}
+${articleText.substring(0, 5000)}`;
 
-Return ONLY valid JSON in this exact format:
-{
-  "claims": ["claim 1", "claim 2", "claim 3"],
-  "tone": "tone description",
-  "bias": "bias description"
-}`;
-
-    console.log("Calling Lovable AI for Step 1...");
-    const step1Response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    console.log("Classifying article type...");
+    const classifyResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${LOVABLE_API_KEY}`,
@@ -78,104 +67,112 @@ Return ONLY valid JSON in this exact format:
       },
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "user", content: step1Prompt }
-        ],
+        messages: [{ role: "user", content: classifyPrompt }],
+        temperature: 0.2,
+      }),
+    });
+
+    if (!classifyResponse.ok) {
+      const errorText = await classifyResponse.text();
+      console.error("Classification error:", classifyResponse.status, errorText);
+      throw new Error("Failed to classify article");
+    }
+
+    const classifyData = await classifyResponse.json();
+    const articleType = classifyData.choices[0].message.content.trim().toLowerCase();
+    console.log("Article type:", articleType);
+
+    // Step 3: Comprehensive analysis based on article type
+    const isPolitical = articleType === "political";
+    
+    const analysisPrompt = isPolitical 
+      ? `You are an expert AI analyst. Analyze the article and return structured JSON with:
+
+1. "political_bias_score": numeric 0–100 (0 = far-left, 50 = center, 100 = far-right)
+2. "writing_style_score": numeric 0–100 (0 = fully opinion, 100 = fully factual)
+3. "article_summary": short summary (2–3 sentences)
+4. "claims": list of 3–5 key claims from the article
+5. "tone": overall tone (neutral, optimistic, alarmist, negative)
+6. "bias": ideological or framing bias description
+7. "political_slant": conservative, liberal, centrist, or other
+8. "source_influence": description of source credibility and potential influence
+9. "risk_level": low / medium / high
+10. "possible_negative_consequences": up to 3 potential risks for SMEs
+11. "suggested_actions": up to 3 actionable recommendations
+
+Article text:
+${articleText}
+
+Return ONLY valid JSON.`
+      : `You are an AI business intelligence assistant for SMEs. Analyze the article and return structured JSON with:
+
+1. "political_bias_score": set to 50 (neutral)
+2. "writing_style_score": numeric 0–100 (0 = fully opinion, 100 = fully factual)
+3. "article_summary": short summary (2–3 sentences)
+4. "claims": list of 3–5 key claims from the article
+5. "tone": overall tone description
+6. "bias": any framing bias or "none"
+7. "political_slant": "N/A"
+8. "source_influence": "N/A"
+9. "risk_level": low / medium / high
+10. "possible_negative_consequences": up to 3 potential risks for SMEs
+11. "suggested_actions": up to 3 actionable recommendations
+
+Article text:
+${articleText}
+
+Return ONLY valid JSON.`;
+
+    console.log("Calling Lovable AI for comprehensive analysis...");
+    const analysisResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [{ role: "user", content: analysisPrompt }],
         temperature: 0.3,
       }),
     });
 
-    if (!step1Response.ok) {
-      if (step1Response.status === 429) {
+    if (!analysisResponse.ok) {
+      if (analysisResponse.status === 429) {
         return new Response(
           JSON.stringify({ error: "AI rate limit exceeded. Please try again later." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      if (step1Response.status === 402) {
+      if (analysisResponse.status === 402) {
         return new Response(
           JSON.stringify({ error: "AI credits exhausted. Please add credits to continue." }),
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      const errorText = await step1Response.text();
-      console.error("AI gateway error:", step1Response.status, errorText);
+      const errorText = await analysisResponse.text();
+      console.error("AI gateway error:", analysisResponse.status, errorText);
       throw new Error("AI gateway error");
     }
 
-    const step1Data = await step1Response.json();
-    console.log("Step 1 response:", JSON.stringify(step1Data));
+    const analysisData = await analysisResponse.json();
+    console.log("Analysis response:", JSON.stringify(analysisData));
 
-    let claimsAnalysis;
+    let fullAnalysis;
     try {
-      const content = step1Data.choices[0].message.content;
-      // Extract JSON from markdown code blocks if present
+      const content = analysisData.choices[0].message.content;
       const jsonMatch = content.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/) || content.match(/(\{[\s\S]*\})/);
       const jsonStr = jsonMatch ? jsonMatch[1] : content;
-      claimsAnalysis = JSON.parse(jsonStr);
+      fullAnalysis = JSON.parse(jsonStr);
     } catch (error) {
-      console.error("Failed to parse Step 1 JSON:", error);
+      console.error("Failed to parse analysis JSON:", error);
       throw new Error("Failed to parse AI response");
     }
 
-    // Step 3: Predict downstream impact using the claims analysis
-    const step2Prompt = `You are an AI decision-intelligence assistant. Based on the claims analysis below, predict potential business impact for a small or medium-sized enterprise (SME) reading this article. Return JSON:
-
-1. "risk_level": low / medium / high — likelihood the article could lead to risky decisions.
-2. "possible_negative_consequences": up to 3 potential mis-decisions or risks for the SME (array of strings).
-3. "suggested_actions": up to 3 actionable next steps or counterpoints to mitigate bias, misinformation, or overreaction (array of strings).
-
-Claims analysis:
-${JSON.stringify(claimsAnalysis)}
-
-Return ONLY valid JSON in this exact format:
-{
-  "risk_level": "low",
-  "possible_negative_consequences": ["consequence 1", "consequence 2"],
-  "suggested_actions": ["action 1", "action 2", "action 3"]
-}`;
-
-    console.log("Calling Lovable AI for Step 2...");
-    const step2Response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "user", content: step2Prompt }
-        ],
-        temperature: 0.3,
-      }),
-    });
-
-    if (!step2Response.ok) {
-      const errorText = await step2Response.text();
-      console.error("AI gateway error (Step 2):", step2Response.status, errorText);
-      throw new Error("AI gateway error in Step 2");
-    }
-
-    const step2Data = await step2Response.json();
-    console.log("Step 2 response:", JSON.stringify(step2Data));
-
-    let impactAnalysis;
-    try {
-      const content = step2Data.choices[0].message.content;
-      // Extract JSON from markdown code blocks if present
-      const jsonMatch = content.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/) || content.match(/(\{[\s\S]*\})/);
-      const jsonStr = jsonMatch ? jsonMatch[1] : content;
-      impactAnalysis = JSON.parse(jsonStr);
-    } catch (error) {
-      console.error("Failed to parse Step 2 JSON:", error);
-      throw new Error("Failed to parse AI response in Step 2");
-    }
-
-    // Combine results
+    // Add article type to result
     const finalResult = {
-      ...claimsAnalysis,
-      ...impactAnalysis,
+      article_type: articleType,
+      ...fullAnalysis,
     };
 
     console.log("Analysis complete:", JSON.stringify(finalResult));
