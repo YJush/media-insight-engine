@@ -31,14 +31,14 @@ serve(async (req) => {
       const articleResponse = await fetch(url);
       const html = await articleResponse.text();
       
-      // Basic extraction - removes scripts, styles, and tags
+      // Basic extraction - removes scripts, styles, and tags to get raw text
       articleText = html
         .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
         .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
         .replace(/<[^>]+>/g, " ")
         .replace(/\s+/g, " ")
         .trim()
-        .substring(0, 15000); // Limit to first 15k chars
+        .substring(0, 15000); // Limit to first 15k chars for prompt limits
 
       console.log("Article text length:", articleText.length);
     } catch (error) {
@@ -50,7 +50,7 @@ serve(async (req) => {
     }
 
     // -----------------------------------------------------------------------
-    // Step 2: Classify article type (Using existing Lovable setup for speed)
+    // Step 2: Classify article type (Using Lovable Gateway for speed)
     // -----------------------------------------------------------------------
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -87,16 +87,16 @@ ${articleText.substring(0, 5000)}`;
     console.log("Article type:", articleType);
 
     // -----------------------------------------------------------------------
-    // Step 3: Comprehensive Decision Intelligence Analysis (Using Google Direct)
+    // Step 3: Comprehensive Analysis (Decision & Integrity) - Using Google Direct
     // -----------------------------------------------------------------------
     const GOOGLE_API_KEY = Deno.env.get("GOOGLE_API_KEY");
     if (!GOOGLE_API_KEY) {
-      throw new Error("GOOGLE_API_KEY is not configured. Please add it to your secrets.");
+      throw new Error("GOOGLE_API_KEY is not configured in secrets.");
     }
 
     const isPolitical = articleType === "political";
     
-    // NEW PROMPT STRUCTURE
+    // UPDATED PROMPT: Adds Integrity, Intent, and Funding checks
     const analysisPrompt = isPolitical 
       ? `You are an expert AI analyst. Analyze the article and return structured JSON with:
          1. "political_bias_score": numeric 0-100
@@ -115,26 +115,42 @@ ${articleText.substring(0, 5000)}`;
          ${articleText}
          
          Return ONLY valid JSON.`
-      : `You are a Decision Intelligence AI for Small and Medium Enterprises (SMEs). 
-         Do not just summarize. Analyze the STRATEGIC IMPACT of this content.
-         Use Google Search to verify claims and find counter-evidence.
-
-         Analyze the article and return structured JSON with:
+      : `You are a Decision Intelligence AI for Business. 
+         Use Google Search to investigate the publisher, author, and companies mentioned.
+         
+         Analyze the article for STRATEGIC IMPACT, INTEGRITY, and HIDDEN MOTIVES.
+         Return structured JSON with:
 
         1. "article_summary": "Executive summary (2 sentences)",
         2. "risk_level": "low" | "medium" | "high",
-        3. "decision_impact_analysis": A list of 3 items. For each major claim in the text, identify:
+        3. "decision_impact_analysis": A list of 3 items. For each major claim:
            - "claim": The specific assertion made.
            - "domain": "Marketing", "Finance", "HR", "Tech", or "Strategy".
-           - "implied_action": What might a business owner do if they blindly believe this? (e.g., "Shift budget to TikTok ads", "Fire remote staff").
-           - "predicted_consequence": The negative outcome if the article is biased/wrong (e.g., "Wasted ad spend due to unverified demographics").
-           - "recommendation": A specific counter-measure or verification step (e.g., "Run a $500 pilot test before shifting full budget").
-        4. "missing_perspectives": List of strings. What data or viewpoints did the author intentionally leave out?
-        5. "credibility_check": A 1-sentence assessment of the source's historical reliability on this specific topic.
+           - "implied_action": What might a business owner do if they blindly believe this?
+           - "predicted_consequence": The negative outcome if the article is biased/wrong.
+           - "recommendation": A specific counter-measure or verification step.
+        
+        4. "integrity_analysis": {
+           "promotional_score": numeric 0-100 (0 = Objective reporting, 100 = Pure sales copy),
+           "intent": "Informational" | "Persuasive" | "Commercial/Sales" | "Disinformation",
+           "logical_fallacies": ["List any fallacies found, e.g., 'Strawman', 'Appeal to Authority', 'False Dichotomy'"],
+           "conflict_of_interest_warning": "Use Google Search to check if the publisher/author has financial ties to the subjects. If yes, explain. If no, return null."
+        },
+        
+        5. "entities_and_funding": [
+           {
+             "name": "Company/Person Name",
+             "role": "Subject" or "Source",
+             "background_check": "1 sentence on their reputation/funding based on search results."
+           }
+        ],
+
+        6. "missing_perspectives": List of strings. What data or viewpoints did the author intentionally leave out?
+        7. "credibility_check": A 1-sentence assessment of the source's historical reliability on this specific topic.
         
         // Legacy fields for UI compatibility:
-        6. "political_bias_score": 50
-        7. "writing_style_score": 50
+        8. "political_bias_score": 50,
+        9. "writing_style_score": 50
 
         Article text:
         ${articleText}
@@ -143,7 +159,7 @@ ${articleText.substring(0, 5000)}`;
 
     console.log("Calling Google Gemini directly for analysis...");
     
-    // DIRECT GOOGLE API CALL
+    // DIRECT GOOGLE API CALL with Search Tool
     const analysisResponse = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GOOGLE_API_KEY}`,
       {
@@ -187,7 +203,7 @@ ${articleText.substring(0, 5000)}`;
       fullAnalysis = JSON.parse(textContent);
     } catch (error) {
       console.error("Failed to parse Google JSON:", error);
-      console.log("Raw text:", analysisData.candidates[0].content.parts[0].text);
+      console.log("Raw text:", analysisData.candidates[0]?.content?.parts[0]?.text);
       throw new Error("Failed to parse AI response");
     }
 
