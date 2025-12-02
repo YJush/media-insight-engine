@@ -11,138 +11,132 @@ serve(async (req) => {
   }
 
   try {
-    const { url } = await req.json();
-    if (!url) {
-      return new Response(JSON.stringify({ error: "URL is required" }), { 
-        status: 400, 
-        headers: { ...corsHeaders, "Content-Type": "application/json" } 
+    const body = await req.json();
+    const { url } = body;
+
+    if (!url || typeof url !== "string") {
+      return new Response(JSON.stringify({ error: "Valid 'url' is required in JSON body" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    console.log("Analyzing article via Jina Reader:", url);
+    console.log("Analyzing URL:", url);
 
-    // --- FIX STARTS HERE ---
-    // Use Jina Reader to fetch clean markdown content
-    // This handles JS rendering and cleaning automatically
+    // ——— Jina Reader – gets clean markdown, renders JS, bypasses most bot blocks ———
     let articleText = "";
     try {
-      const articleResponse = await fetch(`https://r.jina.ai/${url}`);
-      
-      if (!articleResponse.ok) {
-        throw new Error(`Failed to scrape: ${articleResponse.statusText}`);
+      const jinaResponse = await fetch(`https://r.jina.ai/${encodeURIComponent(url)}`);
+      if (!jinaResponse.ok) {
+        throw new Error(`Jina returned ${jinaResponse.status}`);
       }
+      articleText = await jinaResponse.text();
+      console.log("Jina fetched article – length:", articleText.length);
 
-      articleText = await articleResponse.text();
-      
-      // Basic check to ensure we actually got content
       if (articleText.length < 500) {
-        console.warn("Warning: Scraped text is very short.");
+        console.warn("Very short content – possibly failed scrape");
       }
-      
-      // Truncate to avoid token limits (Markdown is denser, so 20k chars is safe)
-      articleText = articleText.substring(0, 20000);
-      
-    } catch (error) {
-      console.error("Scraping Error:", error);
-      return new Response(JSON.stringify({ 
-        error: "Failed to fetch article content. The site might be blocking bots." 
-      }), { 
-        status: 500, 
-        headers: { ...corsHeaders, "Content-Type": "application/json" } 
+      articleText = articleText.substring(0, 20_000); // safe for Gemini
+    } catch (e) {
+      console.error("Jina scrape failed:", e);
+      return new Response(JSON.stringify({ error: "Could not fetch article content (blocked or invalid URL)" }), {
+        status: 502,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    // --- FIX ENDS HERE ---
 
+    // ——— Google Gemini key ———
     const GOOGLE_API_KEY = Deno.env.get("GOOGLE_API_KEY");
     if (!GOOGLE_API_KEY) {
-      throw new Error("GOOGLE_API_KEY is missing.");
+      console.error("Missing GOOGLE_API_KEY secret");
+      return new Response(JSON.stringify({ error: "Server configuration error" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const analysisPrompt = `
-      You are a Decision Intelligence AI for Business. 
-      Analyze the following article (provided in Markdown format).
-      
-      CRITICAL INSTRUCTION: You must return a valid JSON object. Do not wrap it in markdown code blocks.
-      You MUST populate the "decision_impact_analysis", "integrity_analysis", and "entities_and_funding" fields.
+    const prompt = `
+You are a Decision Intelligence AI for Business. Analyze the following article (Markdown format) and return a **valid JSON object only** (no markdown fences).
 
-      Required JSON Structure:
-      {
-        "article_summary": "Executive summary (max 2 sentences)",
-        "risk_level": "low" or "medium" or "high",
-        "credibility_check": "1 sentence on source reliability",
-        
-        "decision_impact_analysis": [
-           {
-             "claim": "Extract a specific claim",
-             "domain": "Strategy" or "Finance" or "Tech",
-             "implied_action": "What a reader might do",
-             "predicted_consequence": "What happens if this goes wrong",
-             "recommendation": "Verification step"
-           }
-        ],
-        
-        "integrity_analysis": {
-           "promotional_score": number 0-100,
-           "intent": "Informational" or "Commercial",
-           "logical_fallacies": ["List fallacies or 'None'"],
-           "conflict_of_interest_warning": "Note any potential bias"
-        },
-        
-        "entities_and_funding": [
-           {
-             "name": "Key Company/Person",
-             "role": "Subject",
-             "background_check": "Brief context"
-           }
-        ],
+Required exact structure:
+{
+  "article_summary": "Max 2 sentences",
+  "risk_level": "low"|"medium"|"high",
+  "credibility_check": "One-sentence source assessment",
+  "decision_impact_analysis": [
+    {
+      "claim": "Specific claim from article",
+      "domain": "Strategy"|"Finance"|"Tech",
+      "implied_action": "What a reader might do",
+      "predicted_consequence": "If it goes wrong",
+      "recommendation": "Verification step"
+    }
+  ],
+  "integrity_analysis": {
+    "promotional_score": 0,
+    "intent": "Informational"|"Commercial",
+    "logical_fallacies": []|"None",
+    "conflict_of_interest_warning": "Any bias note or 'None detected'"
+  },
+  "entities_and_funding": [
+    {
+      "name": "Company/Person",
+      "role": "Subject"|"Investor"|"Critic",
+      "background_check": "Short context"
+    }
+  ],
+  "missing_perspectives": ["Viewpoint 1", "Viewpoint 2"]
+}
 
-        "missing_perspectives": ["List 2-3 viewpoints missing"]
-      }
+Article Markdown:
+${articleText}
+`;
 
-      Article Markdown:
-      ${articleText}
-    `;
-
-    // ... rest of your code remains the same ...
-    const response = await fetch(
+    const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GOOGLE_API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: analysisPrompt }] }],
-          generationConfig: { temperature: 0.3 }
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.3 },
         }),
-      }
+      },
     );
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Google API Error: ${errorText}`);
+    if (!geminiRes.ok) {
+      const err = await geminiRes.text();
+      console.error("Gemini error:", err);
+      throw new Error("Gemini API failed");
     }
 
-    const data = await response.json();
-    const textContent = data.candidates[0].content.parts[0].text;
-    
-    // Improved cleaning to handle markdown code blocks better
-    const cleanedText = textContent
-      .replace(/^```json\s*/, '')
-      .replace(/^```\s*/, '')
-      .replace(/\s*```$/, '')
+    const data = await geminiRes.json();
+    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+    // Clean any leftover markdown fences
+    const cleaned = rawText
+      .replace(/^```json\s*\n?/, "")
+      .replace(/^```\s*\n?/, "")
+      .replace(/\n?```$/, "")
       .trim();
-      
-    const result = JSON.parse(cleanedText);
 
-    return new Response(JSON.stringify(result), { 
-      status: 200, 
-      headers: { ...corsHeaders, "Content-Type": "application/json" } 
+    let result;
+    try {
+      result = JSON.parse(cleaned);
+    } catch (e) {
+      console.error("Failed to parse Gemini JSON. Raw output:", rawText);
+      throw new Error("Invalid JSON from AI");
+    }
+
+    return new Response(JSON.stringify(result), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-
   } catch (error) {
-    console.error("Error:", error);
-    return new Response(JSON.stringify({ error: error.message }), { 
-      status: 500, 
-      headers: { ...corsHeaders, "Content-Type": "application/json" } 
+    console.error("Unhandled error:", error);
+    return new Response(JSON.stringify({ error: error.message || "Internal server error" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
