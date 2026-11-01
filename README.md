@@ -1,6 +1,6 @@
 # Article Insight Engine
 
-[![CI](https://github.com/YJush/article-insight-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/YJush/article-insight-engine/actions/workflows/ci.yml)
+[![CI](https://github.com/industry-contents/article-insight-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/industry-contents/article-insight-engine/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-B8390D.svg)](LICENSE)
 
 Paste an article URL and get a structured editorial read: summary, decision risks, promotional intent, potential conflicts of interest and missing perspectives. Built for journalists, analysts and buyers who need to judge a piece of business or technology coverage quickly.
@@ -22,7 +22,7 @@ React 18, TypeScript, Vite, Tailwind CSS, shadcn/ui, Supabase Edge Functions, Go
 ## Getting started
 
 ```sh
-git clone https://github.com/YJush/article-insight-engine.git
+git clone https://github.com/industry-contents/article-insight-engine.git
 cd article-insight-engine
 cp .env.example .env   # add your own Supabase project values
 npm ci
